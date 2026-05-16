@@ -465,7 +465,8 @@ function saveStatus(){
   }else{
     apiPost("insert","statuses",row,function(e,d){
       if(e){alert("Error: "+e);return;}
-      loadAll(function(){closeModal("statusModal");renderAll();});
+      row.id=nextStatusId++;statuses.push(row);
+      closeModal("statusModal");renderAll();
     });
   }
 }
@@ -522,7 +523,8 @@ function saveCat(){
   }else{
     apiPost("insert","categories",row,function(e){
       if(e){alert("Error: "+e);return;}
-      loadAll(function(){closeModal("catModal");renderAll();});
+      row.id=nextCatId++;categories.push(row);
+      closeModal("catModal");renderAll();
     });
   }
 }
@@ -614,7 +616,8 @@ function saveAgency(){
   }else{
     apiPost("insert","agencies",row,function(e){
       if(e){alert("Error: "+e);return;}
-      loadAll(function(){closeModal("agencyModal");renderAll();});
+      row.id=nextAgencyId++;agencies.push(row);
+      closeModal("agencyModal");renderAll();
     });
   }
 }
@@ -671,7 +674,9 @@ function addTool(){
   };
   apiPost("insert","tools",row,function(e){
     if(e){alert("Error: "+e);return;}
-    loadAll(function(){closeModal("addModal");renderAll();});
+    row.id=nextToolId++;row.catId=Number(row.catId);row.agencyId=Number(row.agencyId);
+    row.statusId=Number(row.statusId);row.total=Number(row.total);row.used=0;row.min=Number(row.min);
+    tools.push(row);closeModal("addModal");renderAll();
   });
 }
 function openDetail(idx){
