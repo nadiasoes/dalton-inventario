@@ -92,6 +92,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .color-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;}
 .color-chip{width:32px;height:32px;border-radius:50%;cursor:pointer;border:3px solid transparent;}
 .color-chip.selected{border-color:var(--text);}
+.qty-btn{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:300;}
+.qty-btn:active{background:var(--bg2);}
 .global-loader{position:fixed;inset:0;z-index:200;background:rgba(255,255,255,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
 .loader-spinner{width:40px;height:40px;border:3px solid var(--dalton2);border-top-color:var(--dalton);border-radius:50%;animation:spin 0.8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
@@ -457,9 +459,11 @@ function saveStatus(){
   var row={name:name,color:color};
   if(editingStatusId){
     row.id=editingStatusId;
-    apiPost("update","statuses",row,function(e){
+    var existSt=stById(editingStatusId);
+    var rowSt=Object.assign({},existSt,row,{id:editingStatusId});
+    apiPost("update","statuses",rowSt,function(e){
       if(e){alert("Error: "+e);return;}
-      var s=stById(editingStatusId);if(s){s.name=name;s.color=color;}
+      if(existSt){existSt.name=name;existSt.color=color;}
       closeModal("statusModal");renderAll();
     });
   }else{
@@ -515,9 +519,11 @@ function saveCat(){
   var row={name:name,icon:selectedCatIcon};
   if(editingCatId){
     row.id=editingCatId;
-    apiPost("update","categories",row,function(e){
+    var existCat=catById(editingCatId);
+    var rowCat=Object.assign({},existCat,row,{id:editingCatId});
+    apiPost("update","categories",rowCat,function(e){
       if(e){alert("Error: "+e);return;}
-      var c=catById(editingCatId);if(c){c.name=name;c.icon=selectedCatIcon;}
+      if(existCat){existCat.name=name;existCat.icon=selectedCatIcon;}
       closeModal("catModal");renderAll();
     });
   }else{
@@ -605,18 +611,19 @@ function openAgencyModal(id){
 }
 function saveAgency(){
   var name=document.getElementById("ag-name").value.trim();if(!name){alert("Ingresa un nombre");return;}
-  var row={name:name,resp:document.getElementById("ag-resp").value.trim(),phone:document.getElementById("ag-phone").value.trim(),email:document.getElementById("ag-email").value.trim(),addr:document.getElementById("ag-addr").value.trim(),notes:document.getElementById("ag-notes").value.trim()};
+  var fields={name:name,resp:document.getElementById("ag-resp").value.trim(),phone:document.getElementById("ag-phone").value.trim(),email:document.getElementById("ag-email").value.trim(),addr:document.getElementById("ag-addr").value.trim(),notes:document.getElementById("ag-notes").value.trim()};
   if(editingAgencyId){
-    row.id=editingAgencyId;
+    var ag=agById(editingAgencyId);
+    var row=Object.assign({},ag,fields,{id:editingAgencyId});
     apiPost("update","agencies",row,function(e){
       if(e){alert("Error: "+e);return;}
-      var ag=agById(editingAgencyId);if(ag)Object.assign(ag,row);
+      Object.assign(ag,fields);
       closeModal("agencyModal");renderAll();
     });
   }else{
-    apiPost("insert","agencies",row,function(e){
+    apiPost("insert","agencies",fields,function(e){
       if(e){alert("Error: "+e);return;}
-      row.id=nextAgencyId++;agencies.push(row);
+      fields.id=nextAgencyId++;agencies.push(fields);
       closeModal("agencyModal");renderAll();
     });
   }
@@ -689,30 +696,94 @@ function openDetail(idx){
     "<div><div style='font-size:20px;font-weight:600'>"+esc(t.name)+"</div>"+
     "<div style='font-size:13px;color:var(--text2);margin-top:2px'>"+esc(agName(t.agencyId))+" &middot; "+esc(catName(t.catId))+"</div>"+
     (t.code?"<div style='font-size:12px;color:var(--text3);font-family:var(--mono)'>"+esc(t.code)+"</div>":"")+"</div></div>"+
+
     "<div class='stat-row'>"+
     "<div class='stat-box'><div class='stat-val'>"+t.total+"</div><div class='stat-lbl'>Total</div></div>"+
     "<div class='stat-box'><div class='stat-val' style='color:"+qc+"'>"+avail+"</div><div class='stat-lbl'>Disponibles</div></div>"+
     "<div class='stat-box'><div class='stat-val'>"+t.used+"</div><div class='stat-lbl'>En uso</div></div>"+
     "</div>"+
     "<div style='margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap'>"+stockBadge(s)+statusBadge(t.statusId)+"</div>"+
-    "<div style='margin-bottom:16px'>"+
-      "<label class='form-label' style='font-size:11px'>Cambiar estatus</label>"+
-      "<select class='form-input' id='detail-status-sel' style='margin-top:4px'>"+
-        statuses.map(function(st){return "<option value='"+st.id+"'"+(t.statusId===st.id?" selected":"")+">"+esc(st.name)+"</option>";}).join("")+
-      "</select>"+
+
+    "<!-- AJUSTAR CANTIDAD -->"+
+    "<div style='background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px'>"+
+      "<div class='form-label' style='margin-bottom:10px'>Ajustar inventario</div>"+
+      "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px'>"+
+        "<button class='qty-btn' id='dd-minus'>&#8722;</button>"+
+        "<input type='number' id='dd-qty-val' value='1' min='1' style='width:64px;text-align:center;font-size:16px;font-weight:600;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:var(--mono)'>"+
+        "<button class='qty-btn' id='dd-plus'>&#43;</button>"+
+        "<span style='font-size:12px;color:var(--text2)'>unidades</span>"+
+      "</div>"+
+      "<div style='display:flex;gap:8px'>"+
+        "<button class='btn btn-sm btn-accent' id='dd-add' style='flex:1;justify-content:center'>&#43; Agregar al stock</button>"+
+        "<button class='btn btn-sm btn-danger' id='dd-remove' style='flex:1;justify-content:center'>&#8722; Quitar del stock</button>"+
+      "</div>"+
     "</div>"+
-    "<div class='detail-actions'>"+
-    "<button class='btn btn-sm btn-accent' id='dd-st'>Guardar estatus</button>"+
-    "<button class='btn btn-sm btn-danger' id='dd-del'>Eliminar</button>"+
-    "</div>";
-  document.getElementById("dd-st").onclick=function(){
-    var newSt=parseInt(document.getElementById("detail-status-sel").value);
-    var row=Object.assign({},t);row.statusId=newSt;
+
+    "<!-- CAMBIAR AGENCIA, CATEGORIA, ESTATUS -->"+
+    "<div style='background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px'>"+
+      "<div class='form-label' style='margin-bottom:10px'>Modificar datos</div>"+
+      "<div class='form-group' style='margin-bottom:10px'>"+
+        "<label class='form-label' style='font-size:10px'>Agencia</label>"+
+        "<select class='form-input' id='detail-ag-sel'>"+
+          agencies.map(function(a){return "<option value='"+a.id+"'"+(t.agencyId===a.id?" selected":"")+">"+esc(a.name)+"</option>";}).join("")+
+        "</select>"+
+      "</div>"+
+      "<div class='form-group' style='margin-bottom:10px'>"+
+        "<label class='form-label' style='font-size:10px'>Categoria</label>"+
+        "<select class='form-input' id='detail-cat-sel'>"+
+          categories.map(function(c){return "<option value='"+c.id+"'"+(t.catId===c.id?" selected":"")+">"+c.icon+" "+esc(c.name)+"</option>";}).join("")+
+        "</select>"+
+      "</div>"+
+      "<div class='form-group' style='margin-bottom:10px'>"+
+        "<label class='form-label' style='font-size:10px'>Estatus</label>"+
+        "<select class='form-input' id='detail-status-sel'>"+
+          statuses.map(function(st){return "<option value='"+st.id+"'"+(t.statusId===st.id?" selected":"")+">"+esc(st.name)+"</option>";}).join("")+
+        "</select>"+
+      "</div>"+
+      "<button class='btn btn-accent' id='dd-save' style='width:100%;justify-content:center'>Guardar cambios</button>"+
+    "</div>"+
+
+    "<button class='btn btn-danger' id='dd-del' style='width:100%;justify-content:center'>Eliminar herramienta</button>";
+
+  /* qty controls */
+  document.getElementById("dd-minus").onclick=function(){var el=document.getElementById("dd-qty-val");el.value=Math.max(1,parseInt(el.value||1)-1);};
+  document.getElementById("dd-plus").onclick=function(){var el=document.getElementById("dd-qty-val");el.value=parseInt(el.value||1)+1;};
+
+  /* agregar stock */
+  document.getElementById("dd-add").onclick=function(){
+    var qty=parseInt(document.getElementById("dd-qty-val").value)||1;
+    var row=Object.assign({},t);row.total=t.total+qty;
     apiPost("update","tools",row,function(e){
       if(e){alert("Error: "+e);return;}
-      t.statusId=newSt;closeModal("detailModal");renderAll();
+      t.total+=qty;closeModal("detailModal");renderAll();
     });
   };
+
+  /* quitar stock */
+  document.getElementById("dd-remove").onclick=function(){
+    var qty=parseInt(document.getElementById("dd-qty-val").value)||1;
+    if(qty>t.total){alert("No puedes quitar mas de "+t.total+" unidades");return;}
+    var newUsed=Math.max(0,t.used-(Math.max(0,qty-(t.total-t.used))));
+    var row=Object.assign({},t);row.total=t.total-qty;row.used=newUsed;
+    apiPost("update","tools",row,function(e){
+      if(e){alert("Error: "+e);return;}
+      t.total-=qty;t.used=newUsed;closeModal("detailModal");renderAll();
+    });
+  };
+
+  /* guardar agencia / categoria / estatus */
+  document.getElementById("dd-save").onclick=function(){
+    var newAg=parseInt(document.getElementById("detail-ag-sel").value);
+    var newCat=parseInt(document.getElementById("detail-cat-sel").value);
+    var newSt=parseInt(document.getElementById("detail-status-sel").value);
+    var row=Object.assign({},t);row.agencyId=newAg;row.catId=newCat;row.statusId=newSt;
+    apiPost("update","tools",row,function(e){
+      if(e){alert("Error: "+e);return;}
+      t.agencyId=newAg;t.catId=newCat;t.statusId=newSt;
+      closeModal("detailModal");renderAll();
+    });
+  };
+
   document.getElementById("dd-del").onclick=function(){deleteTool(idx);};
   openModal("detailModal");
 }
