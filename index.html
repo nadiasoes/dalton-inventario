@@ -275,8 +275,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
   </div>
   <div class="form-group"><label class="form-label">Estatus inicial</label><select class="form-input" id="a-status"></select></div>
   <div class="form-row">
-    <div class="form-group"><label class="form-label">Cantidad</label><input class="form-input" id="a-qty" type="number" min="0" value="1" inputmode="numeric"></div>
-    <div class="form-group"><label class="form-label">Stock minimo</label><input class="form-input" id="a-min" type="number" min="0" value="1" inputmode="numeric"></div>
+    <div class="form-group"><label class="form-label">Cantidad</label><input class="form-input" id="a-qty" type="text" value="1" placeholder="Ej: 1, 1/2, 1 1/2, 2-3"></div>
+    <div class="form-group"><label class="form-label">Stock minimo</label><input class="form-input" id="a-min" type="text" value="1" placeholder="Ej: 1, 1/2"></div>
   </div>
   <div class="form-group"><label class="form-label">Codigo / Serie</label><input class="form-input" id="a-code"></div>
   <div class="modal-footer"><button class="btn" onclick="closeModal('addModal')">Cancelar</button><button class="btn btn-accent" onclick="addTool()">Agregar</button></div>
@@ -336,7 +336,7 @@ function loadAll(cb){
     else err=e; check();
   });
   apiGet("tools",function(e,d){
-    if(!e&&d){tools=d.map(toNum(["id","catId","agencyId","statusId","total","used","min"]));nextToolId=maxId(tools)+1;}
+    if(!e&&d){tools=d.map(toNum(["id","catId","agencyId","statusId"]));nextToolId=maxId(tools)+1;}
     else err=e; check();
   });
 }
@@ -346,6 +346,7 @@ function toNum(fields){
     return obj;
   };
 }
+function roundQty(v){return Math.round(v*100)/100;}
 function maxId(arr){
   if(!arr||!arr.length)return 0;
   return Math.max.apply(null,arr.map(function(x){return x.id||0;}));
@@ -364,7 +365,18 @@ function catName(id){var c=catById(id);return c?c.name:"Sin categoria";}
 function catIcon(id){var c=catById(id);return c?c.icon:"\u{1F527}";}
 function stName(id){var s=stById(id);return s?s.name:"Sin estado";}
 function stColor(id){var s=stById(id);return s?s.color:"#999";}
-function stockOf(t){var a=t.total-t.used;return a<=0?"out":a<=t.min?"low":"ok";}
+function parseQty(v){
+  if(v===undefined||v===null||v==="")return 0;
+  var s=String(v).trim();
+  // try fraction like 1/2 or 1 1/2
+  var mixed=/^(\d+)\s+(\d+)\/(\d+)$/.exec(s);
+  if(mixed)return parseInt(mixed[1])+(parseInt(mixed[2])/parseInt(mixed[3]));
+  var frac=/^(\d+)\/(\d+)$/.exec(s);
+  if(frac)return parseInt(frac[1])/parseInt(frac[2]);
+  var n=parseFloat(s.replace(",","."));
+  return isNaN(n)?0:n;
+}
+function stockOf(t){var a=parseQty(t.total)-parseQty(t.used);var m=parseQty(t.min);return a<=0?"out":a<=m?"low":"ok";}
 function initials(s){return s.split(" ").slice(0,2).map(function(w){return w[0]||"";}).join("").toUpperCase()||"?";}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function stockBadge(s){
@@ -392,7 +404,9 @@ function renderKPIs(){
 
 /* ── TOOL CARD ───────────────────────────── */
 function toolCardHtml(t){
-  var s=stockOf(t),avail=t.total-t.used,tidx=tools.indexOf(t);
+  var s=stockOf(t),tidx=tools.indexOf(t);
+  var availNum=parseQty(t.total)-parseQty(t.used);
+  var availDisp=availNum%1===0?availNum:availNum.toFixed(2);
   var cls=s==="low"?"warn":s==="out"?"danger":"";
   var qc=s==="out"?"var(--dalton)":s==="low"?"var(--amber)":"var(--green)";
   return "<div class='tool-card "+cls+"' onclick='openDetail("+tidx+")'>"+
@@ -400,7 +414,7 @@ function toolCardHtml(t){
     "<div class='tool-info'><div class='tool-name'>"+esc(t.name)+"</div>"+
     "<div class='tool-meta'>"+esc(catName(t.catId))+" &middot; "+esc(agName(t.agencyId))+"</div>"+
     "<div style='margin-top:5px;display:flex;gap:5px;flex-wrap:wrap'>"+stockBadge(s)+statusBadge(t.statusId)+"</div></div>"+
-    "<div class='tool-right'><div class='tool-qty' style='color:"+qc+"'>"+avail+"</div><div class='tool-qty-label'>disponibles</div></div></div>";
+    "<div class='tool-right'><div class='tool-qty' style='color:"+qc+"'>"+availDisp+"</div><div class='tool-qty-label'>disponibles</div></div></div>";
 }
 
 /* ── DASHBOARD ───────────────────────────── */
@@ -674,9 +688,9 @@ function addTool(){
     catId:parseInt(document.getElementById("a-cat").value)||0,
     agencyId:parseInt(document.getElementById("a-ag").value)||0,
     statusId:parseInt(document.getElementById("a-status").value)||0,
-    total:parseInt(document.getElementById("a-qty").value)||0,
+    total:document.getElementById("a-qty").value.trim()||"0",
     used:0,
-    min:parseInt(document.getElementById("a-min").value)||1,
+    min:document.getElementById("a-min").value.trim()||"1",
     code:document.getElementById("a-code").value
   };
   apiPost("insert","tools",row,function(e){
@@ -687,7 +701,10 @@ function addTool(){
   });
 }
 function openDetail(idx){
-  var t=tools[idx];var avail=t.total-t.used;var s=stockOf(t);
+  var t=tools[idx];
+  var availNum=parseQty(t.total)-parseQty(t.used);
+  var dAvail=availNum%1===0?availNum:availNum.toFixed(2);
+  var s=stockOf(t);
   var qc=s==="out"?"var(--dalton)":s==="low"?"var(--amber)":"var(--green)";
   var div=document.getElementById("detailContent");
   div.innerHTML=
@@ -699,7 +716,7 @@ function openDetail(idx){
 
     "<div class='stat-row'>"+
     "<div class='stat-box'><div class='stat-val'>"+t.total+"</div><div class='stat-lbl'>Total</div></div>"+
-    "<div class='stat-box'><div class='stat-val' style='color:"+qc+"'>"+avail+"</div><div class='stat-lbl'>Disponibles</div></div>"+
+    "<div class='stat-box'><div class='stat-val' style='color:"+qc+"'>"+dAvail+"</div><div class='stat-lbl'>Disponibles</div></div>"+
     "<div class='stat-box'><div class='stat-val'>"+t.used+"</div><div class='stat-lbl'>En uso</div></div>"+
     "</div>"+
     "<div style='margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap'>"+stockBadge(s)+statusBadge(t.statusId)+"</div>"+
@@ -709,7 +726,7 @@ function openDetail(idx){
       "<div class='form-label' style='margin-bottom:10px'>Ajustar inventario</div>"+
       "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px'>"+
         "<button class='qty-btn' id='dd-minus'>&#8722;</button>"+
-        "<input type='number' id='dd-qty-val' value='1' min='1' style='width:64px;text-align:center;font-size:16px;font-weight:600;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:var(--mono)'>"+
+        "<input type='text' id='dd-qty-val' value='1' placeholder='Ej: 1/2' style='width:90px;text-align:center;font-size:15px;font-weight:600;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:var(--mono)'>"+
         "<button class='qty-btn' id='dd-plus'>&#43;</button>"+
         "<span style='font-size:12px;color:var(--text2)'>unidades</span>"+
       "</div>"+
@@ -746,28 +763,31 @@ function openDetail(idx){
     "<button class='btn btn-danger' id='dd-del' style='width:100%;justify-content:center'>Eliminar herramienta</button>";
 
   /* qty controls */
-  document.getElementById("dd-minus").onclick=function(){var el=document.getElementById("dd-qty-val");el.value=Math.max(1,parseInt(el.value||1)-1);};
-  document.getElementById("dd-plus").onclick=function(){var el=document.getElementById("dd-qty-val");el.value=parseInt(el.value||1)+1;};
+  document.getElementById("dd-minus").onclick=function(){var el=document.getElementById("dd-qty-val");var v=parseQty(el.value||"1");el.value=Math.max(0.5,Math.round((v-0.5)*100)/100);};
+  document.getElementById("dd-plus").onclick=function(){var el=document.getElementById("dd-qty-val");var v=parseQty(el.value||"0");el.value=Math.round((v+0.5)*100)/100;};
 
   /* agregar stock */
   document.getElementById("dd-add").onclick=function(){
-    var qty=parseInt(document.getElementById("dd-qty-val").value)||1;
-    var row=Object.assign({},t);row.total=t.total+qty;
+    var qty=parseQty(document.getElementById("dd-qty-val").value)||0.5;
+    var newTotal=Math.round((parseQty(t.total)+qty)*100)/100;
+    var row=Object.assign({},t);row.total=newTotal;
     apiPost("update","tools",row,function(e){
       if(e){alert("Error: "+e);return;}
-      t.total+=qty;closeModal("detailModal");renderAll();
+      t.total=newTotal;closeModal("detailModal");renderAll();
     });
   };
 
   /* quitar stock */
   document.getElementById("dd-remove").onclick=function(){
-    var qty=parseInt(document.getElementById("dd-qty-val").value)||1;
-    if(qty>t.total){alert("No puedes quitar mas de "+t.total+" unidades");return;}
-    var newUsed=Math.max(0,t.used-(Math.max(0,qty-(t.total-t.used))));
-    var row=Object.assign({},t);row.total=t.total-qty;row.used=newUsed;
+    var qty=parseQty(document.getElementById("dd-qty-val").value)||0.5;
+    if(qty>parseQty(t.total)){alert("No puedes quitar mas de "+t.total+" unidades");return;}
+    var curTotal=parseQty(t.total);var curUsed=parseQty(t.used);
+    var newTotal=Math.round((curTotal-qty)*100)/100;
+    var newUsed=Math.max(0,Math.round((curUsed-(Math.max(0,qty-(curTotal-curUsed))))*100)/100);
+    var row=Object.assign({},t);row.total=newTotal;row.used=newUsed;
     apiPost("update","tools",row,function(e){
       if(e){alert("Error: "+e);return;}
-      t.total-=qty;t.used=newUsed;closeModal("detailModal");renderAll();
+      t.total=newTotal;t.used=newUsed;closeModal("detailModal");renderAll();
     });
   };
 
