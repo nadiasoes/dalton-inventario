@@ -155,7 +155,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
           <select id="fStatus" onchange="renderInventory()"><option value="">Todos los estatus</option></select>
           <select id="fSt" onchange="renderInventory()"><option value="">Stock</option><option value="ok">Disponible</option><option value="low">Stock bajo</option><option value="out">Sin stock</option></select>
         </div>
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-sm" id="groupToggleBtn" onclick="toggleGroupView()">&#128202; Agrupar por herramienta</button>
           <button class="btn btn-sm btn-accent" onclick="openAddModal()">+ Nueva herramienta</button>
         </div>
         <div class="card-list" id="invList"></div>
@@ -283,6 +284,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 </div></div>
 
 <div class="modal-overlay" id="detailModal"><div class="modal-sheet"><div class="modal-handle"></div><div id="detailContent"></div></div></div>
+
+<div class="modal-overlay" id="groupModal"><div class="modal-sheet"><div class="modal-handle"></div><div id="groupDetailContent"></div></div></div>
 
 <script>
 var API = "https://script.google.com/macros/s/AKfycbyc3OmOIfNNIxbFnu06DqYaYKhj1Rx1dHfHLkXn9kGfTS-aQ0BFV1_PH_cwODrPkqaJ/exec";
@@ -430,16 +433,98 @@ function renderDashboard(){
 }
 
 /* ── INVENTORY ───────────────────────────── */
-function renderInventory(){
+var groupView=false;
+function toggleGroupView(){
+  groupView=!groupView;
+  var btn=document.getElementById("groupToggleBtn");
+  if(groupView){btn.classList.add("btn-accent");btn.innerHTML="&#9989; Vista agrupada";}
+  else{btn.classList.remove("btn-accent");btn.innerHTML="&#128202; Agrupar por herramienta";}
+  renderInventory();
+}
+
+function getFilteredTools(){
   var q=(document.getElementById("searchQ")||{value:""}).value.toLowerCase();
   var ag=parseInt((document.getElementById("fAgency")||{value:""}).value)||null;
   var cat=parseInt((document.getElementById("fCat")||{value:""}).value)||null;
   var st=parseInt((document.getElementById("fStatus")||{value:""}).value)||null;
   var sk=(document.getElementById("fSt")||{value:""}).value;
-  var filtered=tools.filter(function(t){
+  return tools.filter(function(t){
     return t.name.toLowerCase().indexOf(q)>=0&&(!ag||t.agencyId===ag)&&(!cat||t.catId===cat)&&(!st||t.statusId===st)&&(!sk||stockOf(t)===sk);
   });
-  document.getElementById("invList").innerHTML=filtered.length?filtered.map(toolCardHtml).join(""):"<div class='empty'><div class='empty-icon'>\u{1F50D}</div><div class='empty-text'>Sin resultados</div></div>";
+}
+
+function groupTools(list){
+  var groups={};
+  var order=[];
+  list.forEach(function(t){
+    var key=t.name.trim().toLowerCase();
+    if(!groups[key]){groups[key]={name:t.name,catId:t.catId,items:[]};order.push(key);}
+    groups[key].items.push(t);
+  });
+  return order.map(function(k){return groups[k];});
+}
+
+function groupCardHtml(g){
+  var totalSum=0,usedSum=0,worst="ok";
+  g.items.forEach(function(t){
+    totalSum+=parseQty(t.total);usedSum+=parseQty(t.used);
+    var s=stockOf(t);
+    if(s==="out")worst="out";
+    else if(s==="low"&&worst!=="out")worst="low";
+  });
+  totalSum=Math.round(totalSum*100)/100;usedSum=Math.round(usedSum*100)/100;
+  var avail=Math.round((totalSum-usedSum)*100)/100;
+  var cls=worst==="low"?"warn":worst==="out"?"danger":"";
+  var qc=worst==="out"?"var(--dalton)":worst==="low"?"var(--amber)":"var(--green)";
+  var key=g.name.trim().toLowerCase().replace(/'/g,"\\'");
+  return "<div class='tool-card "+cls+"' onclick='openGroupDetail(\""+key+"\")'>"+
+    "<div class='tool-icon'>"+catIcon(g.catId)+"</div>"+
+    "<div class='tool-info'><div class='tool-name'>"+esc(g.name)+"</div>"+
+    "<div class='tool-meta'>"+catName(g.catId)+" &middot; "+g.items.length+" agencia"+(g.items.length!==1?"s":"")+"</div>"+
+    "<div style='margin-top:5px;display:flex;gap:5px;flex-wrap:wrap'>"+stockBadge(worst)+"</div></div>"+
+    "<div class='tool-right'><div class='tool-qty' style='color:"+qc+"'>"+avail+"</div><div class='tool-qty-label'>disponibles</div></div></div>";
+}
+
+function openGroupDetail(key){
+  var matches=tools.filter(function(t){return t.name.trim().toLowerCase()===key;});
+  if(!matches.length)return;
+  var totalSum=0,usedSum=0;
+  matches.forEach(function(t){totalSum+=parseQty(t.total);usedSum+=parseQty(t.used);});
+  totalSum=Math.round(totalSum*100)/100;usedSum=Math.round(usedSum*100)/100;
+  var avail=Math.round((totalSum-usedSum)*100)/100;
+  var rows=matches.map(function(t){
+    var s=stockOf(t);var tIdx=tools.indexOf(t);
+    var a=Math.round((parseQty(t.total)-parseQty(t.used))*100)/100;
+    return "<div class='ag-row' style='cursor:pointer' onclick='closeModal(&quot;groupModal&quot;);openDetail("+tIdx+")'>"+
+      "<div class='ag-avatar' style='font-size:11px'>"+initials(agName(t.agencyId).replace(/^Agencia /,""))+"</div>"+
+      "<div class='ag-info'><div class='ag-name'>"+esc(agName(t.agencyId))+"</div>"+
+      "<div class='ag-resp-line'>Total: "+t.total+" &middot; En uso: "+t.used+"</div>"+
+      "<div class='ag-stats-line'>"+stockBadge(s)+statusBadge(t.statusId)+"</div></div>"+
+      "<div class='tool-right'><div class='tool-qty' style='font-size:18px'>"+a+"</div></div></div>";
+  }).join("");
+  document.getElementById("groupDetailContent").innerHTML=
+    "<div style='display:flex;align-items:center;gap:14px;margin-bottom:18px'>"+
+    "<div style='width:52px;height:52px;border-radius:14px;background:var(--dalton2);border:1px solid var(--dalton3);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0'>"+catIcon(matches[0].catId)+"</div>"+
+    "<div><div style='font-size:20px;font-weight:600'>"+esc(matches[0].name)+"</div>"+
+    "<div style='font-size:13px;color:var(--text2);margin-top:2px'>"+catName(matches[0].catId)+" &middot; en "+matches.length+" agencia"+(matches.length!==1?"s":"")+"</div></div></div>"+
+    "<div class='stat-row'>"+
+    "<div class='stat-box'><div class='stat-val'>"+totalSum+"</div><div class='stat-lbl'>Total real</div></div>"+
+    "<div class='stat-box'><div class='stat-val' style='color:var(--green)'>"+avail+"</div><div class='stat-lbl'>Disponibles</div></div>"+
+    "<div class='stat-box'><div class='stat-val'>"+usedSum+"</div><div class='stat-lbl'>En uso</div></div>"+
+    "</div>"+
+    "<div class='form-label' style='margin-bottom:8px'>Desglose por agencia</div>"+
+    "<div class='ag-list'>"+rows+"</div>";
+  openModal("groupModal");
+}
+
+function renderInventory(){
+  var filtered=getFilteredTools();
+  if(groupView){
+    var groups=groupTools(filtered);
+    document.getElementById("invList").innerHTML=groups.length?groups.map(groupCardHtml).join(""):"<div class='empty'><div class='empty-icon'>\u{1F50D}</div><div class='empty-text'>Sin resultados</div></div>";
+  }else{
+    document.getElementById("invList").innerHTML=filtered.length?filtered.map(toolCardHtml).join(""):"<div class='empty'><div class='empty-icon'>\u{1F50D}</div><div class='empty-text'>Sin resultados</div></div>";
+  }
 }
 
 /* ── STATUSES ────────────────────────────── */
