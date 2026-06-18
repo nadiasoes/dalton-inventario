@@ -392,7 +392,13 @@ function statusBadge(id){
 /* ── KPIs ────────────────────────────────── */
 function renderKPIs(){
   var total=0,used=0,alerts=0;
-  for(var i=0;i<tools.length;i++){total+=tools[i].total;used+=tools[i].used;if(stockOf(tools[i])!=="ok")alerts++;}
+  for(var i=0;i<tools.length;i++){
+    total+=parseQty(tools[i].total);
+    used+=parseQty(tools[i].used);
+    if(stockOf(tools[i])!=="ok")alerts++;
+  }
+  total=Math.round(total*100)/100;
+  used=Math.round(used*100)/100;
   var pct=total>0?Math.round(used/total*100):0;
   document.getElementById("kpiGrid").innerHTML=
     "<div class='kpi-card highlight'><div class='kpi-icon'>\u{1F527}</div><div class='kpi-val'>"+total+"</div><div class='kpi-label'>Unidades totales</div></div>"+
