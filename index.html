@@ -801,7 +801,7 @@ function openDetail(idx){
   div.innerHTML=
     "<div style='display:flex;align-items:center;gap:14px;margin-bottom:20px'>"+
     "<div style='width:52px;height:52px;border-radius:14px;background:var(--dalton2);border:1px solid var(--dalton3);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0'>"+catIcon(t.catId)+"</div>"+
-    "<div><div style='font-size:20px;font-weight:600'>"+esc(t.name)+"</div>"+
+    "<div><div style='font-size:20px;font-weight:600' id='dd-name-display'>"+esc(t.name)+"</div>"+
     "<div style='font-size:13px;color:var(--text2);margin-top:2px'>"+esc(agName(t.agencyId))+" &middot; "+esc(catName(t.catId))+"</div>"+
     (t.code?"<div style='font-size:12px;color:var(--text3);font-family:var(--mono)'>"+esc(t.code)+"</div>":"")+"</div></div>"+
 
@@ -827,9 +827,17 @@ function openDetail(idx){
       "</div>"+
     "</div>"+
 
-    "<!-- CAMBIAR AGENCIA, CATEGORIA, ESTATUS -->"+
+    "<!-- CAMBIAR NOMBRE, CODIGO, AGENCIA, CATEGORIA, ESTATUS -->"+
     "<div style='background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px'>"+
       "<div class='form-label' style='margin-bottom:10px'>Modificar datos</div>"+
+      "<div class='form-group' style='margin-bottom:10px'>"+
+        "<label class='form-label' style='font-size:10px'>Nombre</label>"+
+        "<input class='form-input' id='detail-name-inp' value='"+esc(t.name)+"'>"+
+      "</div>"+
+      "<div class='form-group' style='margin-bottom:10px'>"+
+        "<label class='form-label' style='font-size:10px'>Codigo / Serie</label>"+
+        "<input class='form-input' id='detail-code-inp' value='"+esc(t.code||"")+"'>"+
+      "</div>"+
       "<div class='form-group' style='margin-bottom:10px'>"+
         "<label class='form-label' style='font-size:10px'>Agencia</label>"+
         "<select class='form-input' id='detail-ag-sel'>"+
@@ -884,13 +892,16 @@ function openDetail(idx){
 
   /* guardar agencia / categoria / estatus */
   document.getElementById("dd-save").onclick=function(){
+    var newName=document.getElementById("detail-name-inp").value.trim();
+    if(!newName){alert("El nombre no puede quedar vacio");return;}
+    var newCode=document.getElementById("detail-code-inp").value.trim();
     var newAg=parseInt(document.getElementById("detail-ag-sel").value);
     var newCat=parseInt(document.getElementById("detail-cat-sel").value);
     var newSt=parseInt(document.getElementById("detail-status-sel").value);
-    var row=Object.assign({},t);row.agencyId=newAg;row.catId=newCat;row.statusId=newSt;
+    var row=Object.assign({},t);row.name=newName;row.code=newCode;row.agencyId=newAg;row.catId=newCat;row.statusId=newSt;
     apiPost("update","tools",row,function(e){
       if(e){alert("Error: "+e);return;}
-      t.agencyId=newAg;t.catId=newCat;t.statusId=newSt;
+      t.name=newName;t.code=newCode;t.agencyId=newAg;t.catId=newCat;t.statusId=newSt;
       closeModal("detailModal");renderAll();
     });
   };
